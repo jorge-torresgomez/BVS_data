@@ -1,7 +1,7 @@
 # BVS_data
 In this repository, it is accessible the data provided by the [BloodVoyagerS framework](https://github.com/RegineWendt/blood-voyager-s) and the code to process this data to provide different representations.
 
-The data provides a table with 7 columns according to the coordinates of flowing nanosensors in the Human Circulatory System: 
+The data file `1000Bots_500s_3accuracy.csv` provides a table with 7 columns according to the coordinates of flowing nanosensors in the Human Circulatory System: 
 1. Column 1 provides the [vessel ID](https://github.com/RegineWendt/blood-voyager-s/blob/master/Images/table1.pdf)
 2. Column 2 to 4 the [3D coordinates](https://github.com/RegineWendt/blood-voyager-s/blob/master/Images/table1.pdf)
 3. Column 5 provides the time variable.
