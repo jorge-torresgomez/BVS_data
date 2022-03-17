@@ -28,7 +28,7 @@ B. In the Time Domain:
 3. The time instants when the nanosensor goes through the Left Heart in the sequence `t_bot_heart[b_ID,t]`.
 4. The periodicity in seconds for the traveled circuit the sequence `perd_bot_heart[b_ID,t]`.
 
-C. Concentration level of particles:
+C. Regarding the concentration level of particles:
 
 5. The concentration level that the nanosensor senses. That is the total of neighbors nanosensors on each vessel segment that simultaneously is also traveling with the given nanosensor. This is given in the sequence `conc_bot[b_ID,t]`.
 6. The concentration level per closed-circuit is given in the sequence `conc_curve_circuit[circuit]`.
