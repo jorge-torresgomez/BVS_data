@@ -5,8 +5,8 @@ In this repository, it is accessible the following:
 2. The code to process the above file accessible in `code_file.mlx`. 
 This code, written in [MatLab](https://www.mathworks.com/products/matlab.html), provides main components related to closed path trajectories followed by nanosensors through the Human Circulatory System.
 4. The pdf `matlab_arrays.pdf` to graphically support the meaning of the main arrays in `code_file.mlx`.
-5. Resulting components stored in the matlab file `BVS_processed_data.mat`.
-6. Resulting components to train the machine learning model stored in the matlab file `BVS_training_data.mat`.
+5. Resulting components stored in the Matlab file `BVS_processed_data.mat`.
+6. Resulting components to train the machine learning model stored in the Matlab file `BVS_training_data.mat`. 
 
 
 The data file `1000Bots_500s_3accuracy.csv` provides a table composed of 7 columns according to the coordinates of flowing nanosensors in the Human Circulatory System: 
@@ -35,3 +35,7 @@ C. Regarding the concentration level of particles:
 5. The concentration level that the nanosensor senses. That is the total of neighbors nanosensors on each vessel segment that simultaneously is also traveling with the given nanosensor. This is given in the sequence `conc_bot[b_ID,t]`.
 6. The concentration level per closed-circuit is given in the sequence `conc_circuit[circuit]`.
 7. The cumulative and average concentration level that a particle senses after a round trip. i.e., starting and ending at the Left Heart. This is given in the sequences `conc_cumul_circuit[circuit]` and `conc_avg_circuit[circuit]`. 
+
+The Matlab file `BVS_processed_data.mat` stores all the above components.
+
+The Matlab data file `BVS_training_data.mat` stores the components as the time elapsed for a round trip on the given circuits and the perceived concentration of nanosensors per circuit.
