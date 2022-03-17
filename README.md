@@ -13,7 +13,7 @@ The data file `1000Bots_500s_3accuracy.csv` provides a table composed of 7 colum
 4. Column 6 is the vessel ID.
 5. Column 7 is the vessel stream.
 
-The code file `code_file.mlx` processes this data identifying main components per closed circuit in the vessels. The closed circuits are always assumed to start and end at the Left Heart. The nanosensors follow several paths according to the variety of tissues represented in the BloodVoyageS framework, i.e., the Head, the Shoulders, the Thorax, etc.
+The code file `code_file.mlx` processes this data identifying main components per closed circuit in the vessels. The closed circuits are always assumed to start and end at the Left Heart. The nanosensors follow several circuits according to the variety of tissues represented in the BloodVoyageS framework, i.e., the Head, the Shoulders, the Thorax, etc.
 The code provides the following outputs that are also graphically illustrated in plots, the meaning of the main output arrays are given in the pdf document `matlab_arrays.pdf`:
 In the Spatial Domain:
 1. The path (according to the vessel segment) followed by each nanosensor as given by the sequence `path_bot[b_ID,t]`.
