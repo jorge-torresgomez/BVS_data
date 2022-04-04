@@ -4,7 +4,7 @@ In this repository, it is accessible the following:
 1. Data provided by the [BloodVoyagerS framework](https://github.com/RegineWendt/blood-voyager-s): file `1000Bots_500s_3accuracy.csv`.
 2. The code to process the above file accessible in `code_file.mlx`. 
 This code, written in [MatLab](https://www.mathworks.com/products/matlab.html), provides main components related to closed path trajectories followed by nanosensors through the Human Circulatory System.
-4. The `Datasheet_for_DataSet.pdf` as a datasheet for the data provided from `code_file.mlx`.
+4. The `Datasheet_for_Dataset.pdf` as a datasheet for the data provided from `code_file.mlx`.
 5. The pdf `matlab_arrays.pdf` to graphically support the meaning of the main arrays in `code_file.mlx`.
 6. Resulting components stored in the Matlab file `BVS_processed_data.mat`.
 7. Resulting components to train the machine learning model stored in the Matlab file `BVS_training_data.mat`. 
