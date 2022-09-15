@@ -1,0 +1,571 @@
+'use strict';
+
+var GroupTypeaheadView = function (options) {
+	this.settings = $.extend({}, options);
+	this.$el = this.settings.el;
+    this.app = this.settings.app;
+	this.site_language = this.settings.site_language.substring(0, 2); //handling all locale formats - 'en' and 'en-US'
+	this.locale = $.inArray( this.site_language, [ "en", "ko", "ja", "zh"] ) < 0 ? "en" : this.site_language; //anything other than CJK default to en
+	this.domain = '';
+	this.trackingLabel = '';
+    this.blankState = this.settings.blankState ? true : false
+	this.quickLinks = this.settings.quickLinks
+	this.model = new GroupTypeaheadModel({app: this.app, locale: this.locale});
+	var view = this;
+
+	view.init();
+
+};
+
+$.extend(GroupTypeaheadView.prototype, {
+	init: function () {
+		var view = this;
+    //setting the domain
+		var locale_domain = { 'en':'www', 'zh':'cn', 'ko':'kr', 'ja':'jp'};
+		view.domain = locale_domain[view.locale];
+    //setting the tracking
+		if(view.app === "answers"){
+			 view.trackingLabel = "ans";
+		}
+		else if(view.app === "fileexchange"){
+			 view.trackingLabel = "fx";
+		}
+		else if(view.app === "cody"){
+			 view.trackingLabel = "cody";
+		}
+		else if(view.app === "blogs"){
+			view.trackingLabel = "blogs";
+	   }
+
+		$(view.model).on('updated', function () {
+			view.getSearchGroupTypeahead();
+		});
+		$(view.model).on('removedSuggestion', function () {
+			view.removeSuggestions();
+		});
+
+		$(view.$el).on('keyup', function (e) {
+			var key = e.keyCode ? e.keyCode : e.charCode;
+			if (key !== 40 && key !== 38 && key !== 27 && key !== 13 && key !== 32) {
+				view.updateGroupTypeAhead();
+			}
+		});
+
+		$(view.$el).on('keydown', function (e) {
+			var key = e.keyCode ? e.keyCode : e.charCode;
+			if (key === 40) {
+				// Down arrow
+				view.handleArrowKey(key);
+			} else if (key === 38) {
+				// Up arrow
+				view.handleArrowKey(key);
+			} else if (key === 27) {
+				// Escape
+				view.removeSuggestions();
+			} else if (key === 13) {
+				// Enter
+				if($('.selected-suggestion').length > 0){
+					e.preventDefault();
+					view.handleEnterKey();
+			  }
+
+			}
+		});
+
+
+	 // when you click anywhere outside the search field remove typeahead
+	 $('body').on('click', function (e) {
+			if (!e.target.closest('.form-control.conjoined_search')) {
+             // except for remove links
+			 if($(e.target).closest('a').attr('class') != 'remove_suggestion'){
+				view.removeSuggestions();
+             }
+			}
+	  });
+
+   // remove typeahead_container on clicking the close button in input
+   view.$el.on('click', function(e){
+		 setTimeout(function(){
+			 if(view.$el.val().length === 0){
+					view.removeSuggestions();
+                    if(view.blankState){view.getBlankStateTypeahead()};
+			 }
+		 }, 100);
+	 });
+
+		$(window).on('resize orientationchange', function () {
+			view.updateContainerWidth();
+		});
+        //add searchterm to local storage if blankstate is enabled
+        view.$el.closest('form').submit(function(e){
+            if(view.blankState){view.addSearchQueryToLocalStorage(view.sanitizeUserInput(view.$el.val().trim()))};
+        });
+	},
+
+	getgroupTypeAheadContentUrl : (function () {
+
+			var proxies = {
+				 answers_content_proxy: '/searchresults/questions?c[]=answers&fq=status:answered&fl=id,question_title,answers_count,url,status,source&rows=5&wt=json',
+				 answers_suggestions_proxy: '/searchresults/suggestions?c[]=answers',
+				 fx_content_proxy:'/searchresults/results?c[]=fileexchange&fl=id,primary_header_en,url,total_downloads&rows=5',
+				 fx_suggestions_proxy:'/searchresults/suggestions?c[]=answers',
+				 cody_content_proxy:'/searchresults/results?c[]=cody&fq=asset_type:"cody:problem"&fl=url,title_en,solvers_count&rows=5',
+				 cody_suggestions_proxy:'/searchresults/suggestions?c[]=cody',
+				 blogs_content_proxy: 'https://www.mathworks.com/searchresults/results?c[]=blogs&fq=subcollection:blogs&rows=5',
+				 blogs_suggestions_proxy: 'https://www.mathworks.com/searchresults/suggestions?c[]=blogs'
+			}
+
+	     function innerFunc() {
+				 switch(this.app)
+					 {
+						case 'answers':
+									return {content_proxy : proxies.answers_content_proxy+'&site_domain='+this.domain+'&site_language='+this.locale,
+										      suggestions_proxy : proxies.answers_suggestions_proxy+'&site_domain='+this.domain+'&site_language='+this.locale};
+									break;
+						case 'fileexchange':
+									return {content_proxy : proxies.fx_content_proxy+'&site_domain='+this.domain+'&site_language='+this.locale,
+										      suggestions_proxy : proxies.fx_suggestions_proxy+'&site_domain='+this.domain+'&site_language='+this.locale};
+									break;
+						case 'cody':
+									return {content_proxy : proxies.cody_content_proxy+'&site_domain='+this.domain+'&site_language='+this.locale,
+										      suggestions_proxy : proxies.cody_suggestions_proxy+'&site_domain='+this.domain+'&site_language='+this.locale};
+									break;
+						case 'blogs':
+									return {content_proxy : proxies.blogs_content_proxy+'&site_domain='+this.domain+'&site_language='+this.locale,
+											  suggestions_proxy : proxies.blogs_suggestions_proxy+'&site_domain='+this.domain+'&site_language='+this.locale};
+									break;			
+					 }
+	     };
+	 return innerFunc;
+  })(),
+
+
+	updateGroupTypeAhead: function () {
+		var view = this;
+		var model = this.model;
+		var searchQuery = this.sanitizeUserInput(this.$el.val().trim());
+		var searchForm = this.$el.closest('form');
+		var groupTypeAheadContentUrl = this.getgroupTypeAheadContentUrl().content_proxy + '&q=' + encodeURIComponent(searchQuery);
+    var groupTypeAheadSuggestionUrl = this.getgroupTypeAheadContentUrl().suggestions_proxy + '&term=' + encodeURIComponent(searchQuery);
+    if(searchQuery.length !== 0){
+		  model.getSuggestion(groupTypeAheadContentUrl, groupTypeAheadSuggestionUrl, searchForm, searchQuery);
+	  }
+		else{
+			view.removeSuggestions();
+            if(view.blankState){view.getBlankStateTypeahead()};
+		}
+	},
+
+	updateContainerWidth: function () {
+		if ($('.typeahead_type_grouped').length) {
+			var typeaheadContainerWidth =  this.$el.closest('form').outerWidth();
+			if (window.innerWidth > '767') {
+				typeaheadContainerWidth += 100;
+			}
+			$('.typeahead_type_grouped').outerWidth(typeaheadContainerWidth);
+		}
+	},
+
+	removeSuggestions: function () {
+		$('.typeahead_type_grouped').remove();
+	},
+
+  //prevent XSS attacks
+	sanitizeUserInput: function (input){
+		return input.replace(/<(|\/|[^>\/bi]|\/[^>bi]|[^\/>][^>]+|\/[^>][^>]+)>/g, '');
+	},
+
+    addSearchQueryToLocalStorage: function (searchQuery) {
+		var ls = window.localStorage;
+		const maxItemLength = 10;
+		if (typeof ls !== 'undefined' && searchQuery != "") {
+			var recentSearchHistory = JSON.parse(ls.getItem('recentSearchHistory') || '[]');
+			var workingHistory = recentSearchHistory.length === maxItemLength? recentSearchHistory.slice(1):recentSearchHistory;
+			if(workingHistory.indexOf(searchQuery) == -1){
+				var updatedHistory = workingHistory.concat(searchQuery);
+				ls.setItem('recentSearchHistory', JSON.stringify(updatedHistory));
+			}
+		}
+	},
+  
+	addListenersToRemoveLinks: function () {
+		document.querySelectorAll('.remove_suggestion').forEach(item => {
+			item.addEventListener('click', event => {
+				event.preventDefault();
+				this.removeRecentSearchItem(event.target.parentElement.children[0].innerText);
+			})
+		});
+	},
+	
+	addListenersToSuggestionLinks: function () {
+		document.querySelectorAll('.suggestion_link').forEach(item => {
+			item.addEventListener('click', event => {
+				this.addSearchQueryToLocalStorage(item.textContent.trim());
+			})
+		});
+    },
+	
+	getBlankStateTypeahead: function () {
+		var recentSearches = JSON.parse(localStorage.getItem('recentSearchHistory') || '[]');
+		var view = this;
+		var searchForm = view.$el.closest('form');
+		var quickLinks = view.quickLinks;
+		if (recentSearches.length !== 0 || quickLinks.length !== 0) {
+			var groupTypeAheadHtml = this.renderBlankStateTemplate(recentSearches, quickLinks);
+			searchForm.append(groupTypeAheadHtml);
+			this.addListenersToRemoveLinks();
+		}
+     view.updateContainerWidth();
+	},
+
+	removeRecentSearchItem: function(value){
+		var ls = window.localStorage;
+		if (typeof ls !== 'undefined') {
+			var recentSearchHistory = JSON.parse(ls.getItem('recentSearchHistory') || '[]');
+			var newHistory = recentSearchHistory.filter(item => item !== value)
+			ls.setItem('recentSearchHistory', JSON.stringify(newHistory));
+		}
+		this.removeSuggestions();
+		this.getBlankStateTypeahead();
+	},
+
+	getSearchGroupTypeahead: function () {
+		var view = this;
+    var contentList = view.model.pages;
+		var wordList = view.model.words;
+		var searchForm = view.model.searchForm;
+		if ( contentList.length !== 0 || wordList.length !== 0 ) {
+
+			var groupTypeAheadHtml = this.renderTemplate(view.model.pages,view.model.words, view.model.header);
+      $('.typeahead_container').length ? $('.typeahead_container').replaceWith(groupTypeAheadHtml) : searchForm.append(groupTypeAheadHtml);
+      if(view.blankState){view.addListenersToSuggestionLinks()};
+		}
+    view.updateContainerWidth();
+	},
+
+
+    renderBlankStateTemplate: function(recentsearches, links){
+		return `<div class="typeahead_container typeahead_type_grouped typeahead_option_remove_suggestions dropdown-menu add_display_block ${this.app == 'answers'? 'add_padding_bottom_0':''}" aria-label="Suggestions" tabindex="0" style="left:auto;">
+		   ${recentsearches.length !== 0 ?
+		   `<dl class="typeahead_suggestions">
+			 <dt tabindex="0">${this.model.getLocale().you_searched}</dt>
+			 <dd class="suggestionarea">
+			 <ul class="list-unstyled">
+			   ${recentsearches.reverse().slice(0, 5).map(recentsearch => `
+					   <li class="suggestion" style="margin-right:0px;">
+							<a href="${this.searchResultsUrl(recentsearch, true)}" class="add_indent_5">${recentsearch}</a> 
+							<a href="javascript:void(0)" class="remove_suggestion">Remove</a>
+					   </li>
+			  `).join("")}
+			</ul>
+		  </dd>
+		  </dl>
+		 ` : ''}
+			<dl class="typeahead_suggestions add_padding_bottom_15">
+				<dt tabindex="0">${this.model.getLocale().quick_links}</dt>
+				<dd class="suggestionarea">
+				<ul class="list-unstyled">
+				${links.map(link => `
+						<li class="suggestion">
+							<a href="${link.link}" class="add_indent_5">
+								${link.text}
+							</a>
+						</li>
+				`).join("")}
+				</ul>
+				</dd>
+			</dl>
+		
+		 </div>`
+		
+		},
+
+renderTemplate: function(pages, words, header){
+ return `<div class="typeahead_container typeahead_type_grouped dropdown-menu add_display_block ${this.app == 'answers'? 'add_padding_bottom_0':''}" aria-label="Suggestions" tabindex="0" style="left:auto;">
+         ${pages.length !== 0 ? `
+          <dl>
+           <dt tabindex="0">${header}</dt>
+            <dd class="suggestionarea">
+             <ul class="list-unstyled">
+              ${pages.map(suggestion => `
+                <li class="suggestion">
+                  <a href="${suggestion.url}?s_tid=ta_${this.trackingLabel}_results">
+                    <div class="row">
+                      <div class="col-lg-10 col-md-10 col-sm-9 col-xs-9">
+                        <span class="suggestion_title">
+												 ${suggestion.title}
+                         ${(this.app == 'answers' && suggestion.support === true)? '<span class="icon-membrane icon_16 support-answer"></span>' : ''}
+                        </span>
+                       </div>
+										 	${this.app == 'answers'? `
+		                      <div class="col-lg-2 col-md-2 col-sm-3 col-xs-3">
+		                       <div class="panel panel-default add_indent_15 ${suggestion.accepted === true ? 'add_border_color_green' : 'add_border_color_mediumgray'}" style="width:35px;">
+		                        <div class="panel-body text-center add_padding_5">
+		                         <span class="${suggestion.accepted === true ? 'add_font_color_green' : 'add_font_color_darkgray'}">${suggestion.answers_count}</span>
+		                        </div>
+		                       </div>
+		                      </div>
+											 `:''}
+                    </div>
+                  </a>
+                </li>
+             `).join("")}
+           </ul>
+         </dd>
+        </dl>
+        ` : ''}
+        ${words.length !== 0 ?
+        `<dl class="typeahead_suggestions">
+          <dt tabindex="0">${this.model.getLocale().suggestions}</dt>
+          <dd class="suggestionarea">
+          <ul class="list-unstyled">
+            ${words.map(suggestion => `
+                    <li class="suggestion">
+                      <a href="${this.searchResultsUrl(suggestion)}" class="suggestion_link">
+                         ${this.titleWithHighlighting(suggestion, this.$el.val())}
+                      </a>
+                    </li>
+           `).join("")}
+         </ul>
+       </dd>
+       </dl>
+      ` : ''}
+     ${this.app == 'answers' ? `
+			<dl>
+       <div class="row add_background_color_gray add_padding_10 add_border_top add_margin_0" style="margin-right:0;">
+        <div class="col-lg-8 col-md-8 col-sm-8 col-xs-7">
+            <p class="add_font_color_darkgray add_padding_top_5"><strong>${this.model.getLocale().footer_string}</strong></p>
+        </div>
+        <div class="col-lg-4 col-md-4 col-sm-4 col-xs-5">
+            <a href = "/matlabcentral/answers/questions/new?s_tid=ta_ans_ask" class="btn btn_color_blue add_padding_5" onmouseover="this.style.backgroundColor='#0076a8'">
+						<p class="add_font_color_white section_downsize">${this.model.getLocale().ask_string}</p>
+						</a>
+        </div>
+       </div>
+			 </dl>
+    ` : ''} </div>`
+},
+
+titleWithHighlighting: function (title, highlighted) {
+    var i = title.toLowerCase().indexOf(highlighted.toLowerCase());
+
+    if (i < 0) { return title; }
+
+    var start  = title.substring(0, i),
+        middle = title.substring(i, i + highlighted.length),
+        end    = title.substring(i + highlighted.length);
+
+    return '<strong>' + start + '</strong>' + middle + '<strong>' + end + '</strong>';
+},
+
+searchResultsUrl: function (suggestion, recentSearchUrl = false) {
+	var suggestion_href;
+	if(this.app === "cody"){
+		suggestion_href = '/matlabcentral/'+this.app+'/problems/?term='+suggestion;
+	}
+	else if(this.app === "blogs"){
+        suggestion_href = 'https://www.mathworks.com/search.html?c[]='+this.app+'&q='+suggestion;
+	}
+	else{
+        suggestion_href = '/matlabcentral/'+this.app+'/?term='+suggestion;
+	}
+	suggestion_href = recentSearchUrl ? suggestion_href + '&s_tid=ta_prevsearch' : suggestion_href + '&s_tid=ta_'+this.trackingLabel+'_phrases';
+	return suggestion_href;
+},
+
+
+	handleArrowKey: function (key) {
+		var selected = $('.selected-suggestion');
+		var suggestionarea = selected.closest('.suggestionarea');
+		if (selected.length > 0) {
+			var newselection;
+			if (key === 40) {
+				newselection = selected.nextAll('.suggestion:first');
+			} else if (key === 38) {
+				newselection = selected.prevAll('.suggestion:first');
+			}
+			newselection.addClass('selected-suggestion');
+			if (newselection.length === 0) {
+				// We're at the end of a section, jump to the next.
+				var newareaselectionparent = suggestionarea.parent();
+				var newareaselection;
+				if (key === 40) {
+					newareaselection = newareaselectionparent.next().find('.suggestion:first');
+				} else if (key === 38) {
+					newareaselection = newareaselectionparent.prev().find('.suggestion:last');
+				}
+				selected.removeClass('selected-suggestion');
+				return newareaselection.addClass('selected-suggestion');
+			} else {
+				selected.removeClass('selected-suggestion');
+			}
+			suggestionarea.scrollTop(suggestionarea.scrollTop() + ($('.selected-suggestion').offset().top - suggestionarea.offset().top));
+		} else {
+			if (key === 40) {
+				return $('.suggestion:first').addClass('selected-suggestion');
+			} else if (key === 38) {
+				return $('.suggestion:last').addClass('selected-suggestion');
+			}
+		}
+	},
+
+	handleEnterKey: function () {
+		var selected = $('.selected-suggestion');
+		var href = selected.children('a').attr('href');
+		if (href) {
+			location.href = href;
+		 }
+ 	 }
+
+});
+
+
+
+//model
+var GroupTypeaheadModel = function (options, attributes) {
+	this.attributes = $.extend({}, attributes);
+	this.settings = $.extend({}, options);
+	this.app = this.settings.app;
+	this.locale = this.settings.locale;
+};
+
+$.extend(GroupTypeaheadModel.prototype, {
+	getSuggestion: function (groupTypeAheadContentUrl, groupTypeAheadSuggestionUrl, searchForm, searchQuery) {
+		var model = this;
+		model.searchForm = searchForm;
+		model.searchQuery = searchQuery;
+		$.when(
+        $.getJSON(groupTypeAheadContentUrl),
+        $.getJSON(groupTypeAheadSuggestionUrl)
+    ).then(function(result1,result2) {
+				model.updateSuggestion(result1[0].response.docs, result2[0]);
+    });
+
+	},
+
+	updateSuggestion: function (contentData, suggestionData) {
+		var model = this;
+
+		if (contentData.length !== 0 || suggestionData.length !== 0) {
+
+			if(model.app === 'answers'){
+					model.pages = this.map_answers_content(contentData);
+					model.header = this.getLocale().questions;
+				}
+			if(model.app === 'fileexchange'){
+					model.pages = this.map_fx_content(contentData);
+					model.header = this.getLocale().files;
+				}
+			if(model.app === 'cody'){
+					model.pages = this.map_cody_content(contentData);
+					model.header = this.getLocale().problems;
+				}
+			if(model.app === 'blogs'){
+					model.pages = this.map_blogs_content(contentData);
+					model.header = this.getLocale().blogs;
+				}	
+
+			model.words = suggestionData;
+			$(model).trigger('updated');
+		} else {
+			$(model).trigger('removedSuggestion');
+		}
+	},
+
+	map_answers_content: function(contentData){
+      var mapped_content =  contentData.map(obj => {
+           var rObj = {};
+					 rObj['id'] = obj.id;
+					 rObj['title'] = obj.question_title;
+					 rObj['url'] = obj.url;
+					 rObj['support'] = obj.source === 'mathworks'? true : false ;
+					 rObj['accepted'] = $.inArray('accepted', obj.status) >= 0 ? true : false;
+					 rObj['answers_count'] = obj.answers_count;
+					 return rObj;
+			 });
+			 return mapped_content;
+	},
+
+	map_fx_content: function(contentData){
+		var mapped_content =  contentData.map(obj => {
+				 var rObj = {};
+				 rObj['title'] = obj.primary_header_en;
+				 rObj['url'] = obj.url;
+				 rObj['downloads'] = obj.total_downloads;
+				 return rObj;
+		 });
+		 return mapped_content;
+	},
+
+	map_cody_content: function(contentData){
+		var mapped_content =  contentData.map(obj => {
+				 var rObj = {};
+				 rObj['title'] = obj.title_en;
+				 rObj['url'] = obj.url;
+				 rObj['solvers'] = obj.solvers_count;
+				 return rObj;
+		 });
+		 return mapped_content;
+	},
+
+	map_blogs_content: function(contentData){
+		var mapped_content =  contentData.map(obj => {
+				 var rObj = {};
+				 rObj['title'] = obj.title_en;
+				 rObj['url'] = obj.url;
+				 return rObj;
+		 });
+		 return mapped_content;
+	},
+
+	getLocale : (function () {
+			var language = {
+			    'en': {
+			            questions : 'Questions',
+						suggestions: 'Suggestions',
+                        you_searched: 'Searched',
+						quick_links: 'Quick Links',
+						footer_string: 'Can\'t find what you are looking for?',
+						ask_string: 'Ask the Community',
+						files: 'Files',
+						problems: 'Problems',
+						blogs: 'Blogs'
+			    },
+
+			    'ja': {
+			            questions : 'ご質問',
+						suggestions :'提案',
+                        you_searched: '検索済み',
+						quick_links: 'クイックリンク',
+						footer_string: '探しているものが見つかりませんか？',
+						ask_string: '尋ねる',
+						blogs: 'ブログ'
+			    },
+
+			    'ko': {
+			            questions : '질문',
+						suggestions: '제안',
+                        you_searched: '검색 됨',
+						quick_links: '빠른 링크',
+						footer_string: '찾고있는 것을 찾을 수 없습니까?',
+						ask_string: '물어보기'
+			    },
+
+			    'zh': {
+			            questions : 'Questions',
+						suggestions: 'Suggestions',
+                        you_searched: 'Searched',
+						quick_links: 'Quick Links',
+						footer_string: 'Can\'t find what you are looking for?',
+						ask_string: 'Ask the Community'
+			    }
+
+			   };
+
+				 function innerFunc() {
+	           return language[this.locale];
+				 };
+		 return innerFunc;
+		})()
+
+});
